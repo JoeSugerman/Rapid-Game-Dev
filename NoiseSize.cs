@@ -8,11 +8,12 @@ public class NoiseSize : MonoBehaviour {
     public float radius = 6.0f;
     public Collider[] collidersDetected;
     public LayerMask mask;
-   
+    public Light eyes;
+    public int detected;
 
     // Use this for initialization
 	void Start () {
-
+      
 		
 	}
 
@@ -23,9 +24,18 @@ public class NoiseSize : MonoBehaviour {
 
         foreach (Collider col in collidersDetected)
         {
-            col.gameObject.GetComponent<Renderer>().material.color = Color.blue;
+            detected = 0;
         }
-	}
+        if (detected < 1)
+        {
+            eyes.color = Color.red;
+            detected++;
+        }
+        else if(detected == 1)
+        {
+            eyes.color = Color.green;
+        }
+    }
 
     private void OnDrawGizmosSelected()
     {
