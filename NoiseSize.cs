@@ -1,46 +1,36 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class NoiseSize : MonoBehaviour {
 
-    public GameObject playerLocation;
-    public float radius = 6.0f;
-    public Collider[] collidersDetected;
-    public LayerMask mask;
-    public Light eyes;
-    public int detected;
+    public float lifeTime;
+    public GameObject noise; 
+    
 
-    // Use this for initialization
+
+	// Use this for initialization
 	void Start () {
-      
+	
+	}
+	
+	// Update is called once per frame
+	void Update () {
 		
 	}
 
-  	// Update is called once per frame
-    void Update()
+   
+
+    public void IsNoiseOver()
     {
-        collidersDetected = Physics.OverlapSphere(playerLocation.transform.position, radius, mask);
-
-        foreach (Collider col in collidersDetected)
+        if (lifeTime < 0)
         {
-            detected = 0;
+            Destroy(noise);
         }
-        if (detected < 1)
+        else
         {
-            eyes.color = Color.red;
-            detected++;
+            noise.transform.localScale += new Vector3(1.0f, 1.0f, 1.0f);
+            lifeTime-=Time.deltaTime;
         }
-        else if(detected == 1)
-        {
-            eyes.color = Color.green;
-        }
-    }
-
-    private void OnDrawGizmosSelected()
-    {
-        Gizmos.color = Color.red;
-
-        Gizmos.DrawWireSphere(playerLocation.transform.position, radius);
     }
 }
