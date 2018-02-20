@@ -1,5 +1,6 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 //handles player movement, utilising the CharacterMotor class
 [RequireComponent(typeof(CharacterMotor))]
@@ -15,6 +16,8 @@ public class PlayerMove : MonoBehaviour
     public AudioClip jumpSound;                 //play when jumping
     public AudioClip landSound;                 //play when landing on ground
     public GameObject pressE;
+    public List<NoiseSize> noisesMade = new List<NoiseSize>();
+    public GameObject noiseSphere;              //object to display noise size on screen
 
     //movement
     public float accel = 70f;                   //acceleration/deceleration in air or on the ground
@@ -38,6 +41,14 @@ public class PlayerMove : MonoBehaviour
 
     //radius Control
     private bool jumped;
+    private bool running;
+    private bool sneaking;
+    private int noiseCount = 0;
+    private float noiseTimer = 0.1f;
+    private const int MAX_NOISES = 5;
+    private float jumpCount;
+    
+
 
     private int onJump;
     private bool grounded;
@@ -51,7 +62,12 @@ public class PlayerMove : MonoBehaviour
     private DealDamage dealDamage;
     private Rigidbody rigid;
     private AudioSource aSource;
-    private NoiseSize noiseSize;
+   
+
+    float h;
+    float v;
+
+    private bool moving;
 
     //setup
     void Awake()
@@ -81,7 +97,7 @@ public class PlayerMove : MonoBehaviour
         characterMotor = GetComponent<CharacterMotor>();
         rigid = GetComponent<Rigidbody>();
         aSource = GetComponent<AudioSource>();
-        noiseSize = GetComponent<NoiseSize>();
+       
         pressE.SetActive(false);
         //gets child objects of floorcheckers, and puts them in an array
         //later these are used to raycast downward and see if we are on the ground
@@ -108,8 +124,42 @@ public class PlayerMove : MonoBehaviour
         screenMovementRight = screenMovementSpace * Vector3.right;
 
         //get movement input, set direction to move in
-        float h = Input.GetAxisRaw("Horizontal");
-        float v = Input.GetAxisRaw("Vertical");
+        h = Input.GetAxisRaw("Horizontal");
+        v = Input.GetAxisRaw("Vertical");
+
+
+
+        //noise update----------------------------------------------------------------------------------------------------
+        if (h != 0 && !running && !jumped && !sneaking)
+        {
+            if (noiseTimer < 0)
+            {
+                NoiseSize tempNoise = new NoiseSize();
+                tempNoise.noise = Instantiate(noiseSphere, transform.position, transform.rotation);
+                tempNoise.noise.tag = "Noise";
+                tempNoise.noise.SetActive(true);
+                tempNoise.lifeTime = 0.25f;
+                noisesMade.Add(tempNoise);
+                Destroy(tempNoise);
+                noiseTimer = 0.5f;
+                noiseCount++;
+            }
+            else
+            {
+                noiseTimer -= Time.deltaTime;
+            }
+           
+        }
+        else if (!running && !jumped && !sneaking)
+        {           
+            noiseTimer = 0.1f;
+        }
+
+        StartCoroutine(CheckLife());
+        //noise update----------------------------------------------------------------------------------------------------
+
+
+
 
         //only apply vertical input to movemement, if player is not sidescroller
         if (!sidescroller)
@@ -118,7 +168,11 @@ public class PlayerMove : MonoBehaviour
             direction = Vector3.right * h;
         moveDirection = transform.position + direction;
 
-        //update noise sphere size
+       
+    }
+
+    private void LateUpdate()
+    {
         UpdateSphere();
     }
 
@@ -129,6 +183,7 @@ public class PlayerMove : MonoBehaviour
         grounded = IsGrounded();
         //move, rotate, manage speed
         characterMotor.MoveTo(moveDirection, curAccel, 0.7f, true);
+     
         if (rotateSpeed != 0 && direction.magnitude != 0)
             characterMotor.RotateToDirection(moveDirection, curRotateSpeed * 5, true);
         characterMotor.ManageSpeed(curDecel, maxSpeed + movingObjSpeed.magnitude, true);
@@ -139,6 +194,8 @@ public class PlayerMove : MonoBehaviour
             animator.SetBool("Grounded", grounded);
             animator.SetFloat("YVelocity", GetComponent<Rigidbody>().velocity.y);
         }
+
+   
     }
 
     //prevents rigidbody from sliding down slight slopes (read notes in characterMotor class for more info on friction)
@@ -228,17 +285,30 @@ public class PlayerMove : MonoBehaviour
         if (groundedCount == 0)
         {
             jumped = true;
+
         }
         if (jumped)
         {
-            if (groundedCount < 0.25 && groundedCount != 0)
+            if (groundedCount < 0.10 && groundedCount != 0)
             {
-                noiseSize.radius = 8;
+                if (jumpCount == 0)
+                {
+                    NoiseSize tempNoise = new NoiseSize();
+                    tempNoise.noise = Instantiate(noiseSphere, transform.position, transform.rotation);
+                    tempNoise.noise.tag = "Noise";
+                    tempNoise.noise.SetActive(true);
+                    tempNoise.lifeTime = 0.5f;
+                    noisesMade.Add(tempNoise);
+                    Destroy(tempNoise);
+                    noiseTimer = 0.5f;
+                    jumpCount++;
+                }
+                
             }
-            else if (groundedCount > 0.025)
-            {
-                noiseSize.radius = 6;
+            else if (groundedCount > 0.10)
+            {                                
                 jumped = false;
+                jumpCount = 0;
             }
         }
 
@@ -284,30 +354,63 @@ public class PlayerMove : MonoBehaviour
     }
 
     public void UpdateSphere()
-    {
-        if (Input.GetKeyDown(KeyCode.LeftShift))
+    {      
+        if (Input.GetKey(KeyCode.LeftShift)&& h != 0 && !jumped)
         {
-            noiseSize.radius = 10.0f;
-            accel = 100.0f;
-            maxSpeed = 100.0f;
+            if (noiseTimer < 0)
+            {
+                accel = 100.0f;
+                maxSpeed = 100.0f;
+                NoiseSize tempNoise = new NoiseSize();
+                tempNoise.noise = Instantiate(noiseSphere, transform.position, transform.rotation);
+                tempNoise.noise.tag = "Noise";
+                tempNoise.noise.SetActive(true);
+                tempNoise.lifeTime = 0.5f;
+                noisesMade.Add(tempNoise);
+                Destroy(tempNoise);
+                noiseTimer = 0.5f;
+                noiseCount++;
+            }
+            else
+            {
+                noiseTimer -= Time.deltaTime;
+            }
+            running = true;
         }
         else if (Input.GetKeyUp(KeyCode.LeftShift))
         {
-            noiseSize.radius = 6.0f;
             accel = 70.0f;
-            maxSpeed = 20.0f;
+            maxSpeed = 20.0f;            
+            running = false;
         }
-        if (Input.GetKeyDown(KeyCode.LeftControl))
+        if (Input.GetKey(KeyCode.LeftControl) && h != 0 && !jumped)
         {
-            noiseSize.radius = 3.5f;
-            accel = 25.0f;
-            maxSpeed = 25.0f;
+            if (noiseTimer < 0)
+            {
+                accel = 25.0f;
+                maxSpeed = 25.0f;
+                NoiseSize tempNoise = new NoiseSize();
+                tempNoise.noise = Instantiate(noiseSphere, transform.position, transform.rotation);                
+                tempNoise.noise.SetActive(true);
+                tempNoise.noise.tag = "Noise";
+                tempNoise.lifeTime = 0.10f;
+                noisesMade.Add(tempNoise);
+                Destroy(tempNoise);
+                noiseTimer = 0.5f;
+                noiseCount++;
+
+            }
+            else
+            {
+                noiseTimer -= Time.deltaTime;
+            }
+            sneaking = true;
         }
         else if (Input.GetKeyUp(KeyCode.LeftControl))
-        {
-            noiseSize.radius = 6.0f;
+        {         
             accel = 70.0f;
             maxSpeed = 20.0f;
+            sneaking = false;
         }
     }
 
@@ -316,7 +419,6 @@ public class PlayerMove : MonoBehaviour
         // Watch for player to enter this trigger
         if (other.gameObject.tag == "PickUp")
         {
-
             Debug.Log("Collision Detected " + other.gameObject.name);
 
             if (pressE == null)
@@ -345,6 +447,14 @@ public class PlayerMove : MonoBehaviour
                 GameObject.Destroy(other.gameObject);
             }
         }
+        else if (other.gameObject.tag == "Door")
+        {
+            if (Input.GetKeyUp(KeyCode.E))
+            {
+                other.gameObject.transform.position += new Vector3(0, 10.0f, 0);
+            }
+          
+        }
     }
 
     void OnTriggerExit(Collider other)
@@ -359,6 +469,14 @@ public class PlayerMove : MonoBehaviour
                 pressE.SetActive(false);
             }
         }
+    }
 
+    IEnumerator CheckLife()
+    {
+        foreach (NoiseSize noise in noisesMade)
+        {
+            noise.IsNoiseOver();
+        }
+        yield return new WaitForEndOfFrame();
     }
 }
