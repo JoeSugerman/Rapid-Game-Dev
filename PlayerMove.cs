@@ -15,6 +15,8 @@ public class PlayerMove : MonoBehaviour
     public Animator animator;                   //object with animation controller on, which you want to animate
     public AudioClip jumpSound;                 //play when jumping
     public AudioClip landSound;                 //play when landing on ground
+    public AudioClip concreteSound;             //play when walking on concrete
+    public AudioClip metalSound;                //play when wlaking on metal
     public GameObject pressE;
     public List<NoiseSize> noisesMade = new List<NoiseSize>();
     public GameObject noiseSphere;              //object to display noise size on screen
@@ -41,17 +43,22 @@ public class PlayerMove : MonoBehaviour
 
     //radius Control
     private bool jumped;
-    private bool running;
-    private bool sneaking;
+    public bool running;
+    public bool sneaking;
     private int noiseCount = 0;
     private float noiseTimer = 0.1f;
     private const int MAX_NOISES = 5;
     private float jumpCount;
-    
+    private float volumeDelay;
+
+    //sound variables
+    public float sneakSoundLevel;
+    public float normalSoundLevel;
+    public float runSoundLevel;
 
 
     private int onJump;
-    private bool grounded;
+    public bool grounded;
     private Transform[] floorCheckers;
     private Quaternion screenMovementSpace;
     private float airPressTime, groundedCount, curAccel, curDecel, curRotateSpeed, slope;
@@ -61,13 +68,19 @@ public class PlayerMove : MonoBehaviour
     private EnemyAI enemyAI;
     private DealDamage dealDamage;
     private Rigidbody rigid;
-    private AudioSource aSource;
+    public AudioSource aSource;
    
 
-    float h;
-    float v;
+    public float h;
+    public float v;
 
     private bool moving;
+
+    //ladder climb variables
+    public bool onLadder;
+    public float climbSpeed;
+    private float climbVelocity;
+   
 
     //setup
     void Awake()
@@ -104,6 +117,10 @@ public class PlayerMove : MonoBehaviour
         floorCheckers = new Transform[floorChecks.childCount];
         for (int i = 0; i < floorCheckers.Length; i++)
             floorCheckers[i] = floorChecks.GetChild(i);
+
+        volumeDelay = 0.2f;
+        
+        
     }
 
     //get state of player, values and input
@@ -128,19 +145,19 @@ public class PlayerMove : MonoBehaviour
         v = Input.GetAxisRaw("Vertical");
 
 
-
-        //noise update----------------------------------------------------------------------------------------------------
+        //-------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //-------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //noise update for player when walking normally - 
         if (h != 0 && !running && !jumped && !sneaking)
         {
             if (noiseTimer < 0)
-            {
-                NoiseSize tempNoise = new NoiseSize();
-                tempNoise.noise = Instantiate(noiseSphere, transform.position, transform.rotation);
-                tempNoise.noise.tag = "Noise";
-                tempNoise.noise.SetActive(true);
-                tempNoise.lifeTime = 0.25f;
-                noisesMade.Add(tempNoise);
-                Destroy(tempNoise);
+            {               
+                GameObject tn = Instantiate(noiseSphere, transform.position, transform.rotation);
+                NoiseSize tempNosie = tn.AddComponent(typeof(NoiseSize)) as NoiseSize;
+                tn.tag = "Noise";
+                tn.SetActive(true);
+                tempNosie.lifeTime = 0.25f;
+                noisesMade.Add(tempNosie);         
                 noiseTimer = 0.5f;
                 noiseCount++;
             }
@@ -155,12 +172,9 @@ public class PlayerMove : MonoBehaviour
             noiseTimer = 0.1f;
         }
 
+        //use coroutine to check life of noise spheres
         StartCoroutine(CheckLife());
-        //noise update----------------------------------------------------------------------------------------------------
-
-
-
-
+      
         //only apply vertical input to movemement, if player is not sidescroller
         if (!sidescroller)
             direction = (screenMovementForward * v) + (screenMovementRight * h);
@@ -168,12 +182,32 @@ public class PlayerMove : MonoBehaviour
             direction = Vector3.right * h;
         moveDirection = transform.position + direction;
 
-       
+
+        //-------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //-------------------------------------------------------------------------------------------------------------------------------------------------------------
+        //climb ladder
+        if (onLadder) //will be true if player is in front of a ladder (determined by LadderClimb script
+        {            
+            if (v == 1) //if player is moving up the ladder
+            {
+                rigid.useGravity = false;                               //turn off gravity so player will move up
+                climbVelocity = climbSpeed * v;                         //adjust climbing speed - can be updated in the inspector
+                rigid.velocity = new Vector3(0, climbVelocity, 0);      //update velocity of ridigbody
+            }
+            else  
+            {
+                rigid.useGravity = true;                                //if player isn't moving turn gravity back on so player falls
+            }
+        }
+        if (!onLadder) //check if player isn't on ladder and set gravity to true to ensure gravity is reset after coming off ladder
+        {
+            rigid.useGravity = true;                                    
+        }       
     }
 
     private void LateUpdate()
     {
-        UpdateSphere();
+        UpdateSphere(); //using late update to check if player is trying to sneak/run and output the appropriate sound
     }
 
     //apply correct player movement (fixedUpdate for physics calculations)
@@ -235,17 +269,7 @@ public class PlayerMove : MonoBehaviour
                         Vector3 slide = new Vector3(0f, -slideAmount, 0f);
                         rigid.AddForce(slide, ForceMode.Force);
                     }
-                    //enemy bouncing
-                    if (hit.transform.tag == "Enemy" && rigid.velocity.y < 0)
-                    {
-                        enemyAI = hit.transform.GetComponent<EnemyAI>();
-                        enemyAI.BouncedOn();
-                        onEnemyBounce++;
-                        dealDamage.Attack(hit.transform.gameObject, 1, 0f, 0f);
-                    }
-                    else
-                        onEnemyBounce = 0;
-                    //moving platforms
+                 
                     if (hit.transform.tag == "MovingPlatform" || hit.transform.tag == "Pushable")
                     {
                         movingObjSpeed = hit.transform.GetComponent<Rigidbody>().velocity;
@@ -276,8 +300,8 @@ public class PlayerMove : MonoBehaviour
         //play landing sound
         if (groundedCount < 0.25 && groundedCount != 0 && !GetComponent<AudioSource>().isPlaying && landSound && GetComponent<Rigidbody>().velocity.y < 1)
         {
-            aSource.volume = Mathf.Abs(GetComponent<Rigidbody>().velocity.y) / 40;
-            aSource.clip = landSound;
+            //aSource.volume = Mathf.Abs(GetComponent<Rigidbody>().velocity.y) / 40;            
+            aSource.volume = 1;
             aSource.Play();
         }
 
@@ -289,17 +313,16 @@ public class PlayerMove : MonoBehaviour
         }
         if (jumped)
         {
-            if (groundedCount < 0.10 && groundedCount != 0)
+            if (groundedCount < 0.10 && groundedCount != 0) 
             {
-                if (jumpCount == 0)
+                if (jumpCount == 0) // check if player has landed (not jumped)
                 {
-                    NoiseSize tempNoise = new NoiseSize();
-                    tempNoise.noise = Instantiate(noiseSphere, transform.position, transform.rotation);
-                    tempNoise.noise.tag = "Noise";
-                    tempNoise.noise.SetActive(true);
-                    tempNoise.lifeTime = 0.5f;
-                    noisesMade.Add(tempNoise);
-                    Destroy(tempNoise);
+                    GameObject tn = Instantiate(noiseSphere, transform.position, transform.rotation);
+                    NoiseSize tempNosie = tn.AddComponent(typeof(NoiseSize)) as NoiseSize;
+                    tn.tag = "Noise";
+                    tn.SetActive(true);
+                    tempNosie.lifeTime = 0.5f;
+                    noisesMade.Add(tempNosie);
                     noiseTimer = 0.5f;
                     jumpCount++;
                 }
@@ -353,49 +376,65 @@ public class PlayerMove : MonoBehaviour
         airPressTime = 0f;
     }
 
+
+    //====================================================================================================================================================================================================0
+    //Function that controls - speed if running/sneaking, creates noise spheres based on buttons input, updates noise clip and sound level
     public void UpdateSphere()
     {      
-        if (Input.GetKey(KeyCode.LeftShift)&& h != 0 && !jumped)
+        if (Input.GetKey(KeyCode.LeftShift)&& h != 0 && !jumped) //if Left Shift is being pressed and user is moving and not jumping - user is running
         {
-            if (noiseTimer < 0)
+            if (noiseTimer < 0) //check noise timer has expried - noise timer used to ensure noise spheres are created appropriately spaced apart
             {
-                accel = 100.0f;
-                maxSpeed = 100.0f;
-                NoiseSize tempNoise = new NoiseSize();
-                tempNoise.noise = Instantiate(noiseSphere, transform.position, transform.rotation);
-                tempNoise.noise.tag = "Noise";
-                tempNoise.noise.SetActive(true);
-                tempNoise.lifeTime = 0.5f;
-                noisesMade.Add(tempNoise);
-                Destroy(tempNoise);
-                noiseTimer = 0.5f;
-                noiseCount++;
+                accel = 100.0f; //update player acceleration
+                maxSpeed = 100.0f; //update player max speed
+           
+                GameObject tn = Instantiate(noiseSphere, transform.position, transform.rotation); // create sphere game object at player's position
+                NoiseSize tempNosie = tn.AddComponent(typeof(NoiseSize)) as NoiseSize;            // add nosie size script to the object to hold life of object - used for checking in checklife funciton
+                tn.tag = "Noise";                                                                 // set sphere's tag to "nosie" for enemy detection
+                tn.SetActive(true);                                                               // set shere is active
+                tempNosie.lifeTime = 0.5f;                                                        // set lifetime - larger number will allow the sphere to grow larger
+                noisesMade.Add(tempNosie);                                                        // add sphere to nosie made list for checking during check life function
+                noiseTimer = 0.5f;                                                                // set noise timer - larger number will create larger delay between spheres being made
+                noiseCount++;                                                                     // increase noise counter - for a reason i can't remember
             }
             else
             {
-                noiseTimer -= Time.deltaTime;
+                noiseTimer -= Time.deltaTime;                                                     // if a noise shouldn't be made - reduce noise counter
             }
-            running = true;
+
+            if (volumeDelay < 0)                            // check if volume delay has expired - used to ensure sounds are played appropriately spaced apart
+            {
+                aSource.Play();                             // play audio source
+                volumeDelay = 0.2f;                         // set volume delay so sound doesn't play continuously - larger number will create larger delay between sounds being played
+            }
+            else
+            {
+                volumeDelay -= Time.deltaTime;              // if a noise shouldn't be made - reduce volume delay
+            }
+            running = true;                                 
+            aSource.volume = runSoundLevel;                 // set volume of audio source - can be set in the inspector - should be the loudest level as the player is running and making the most noise
         }
-        else if (Input.GetKeyUp(KeyCode.LeftShift))
+        else if (Input.GetKeyUp(KeyCode.LeftShift))  // check if left shift has been released - to reset variables back to walking speed
         {
             accel = 70.0f;
             maxSpeed = 20.0f;            
             running = false;
+            aSource.volume = normalSoundLevel;
         }
-        if (Input.GetKey(KeyCode.LeftControl) && h != 0 && !jumped)
+
+        if (Input.GetKey(KeyCode.LeftControl) && h != 0 && !jumped) // if left control is being pressed and user is moving and not jumping - user is sneaking
         {
-            if (noiseTimer < 0)
+            if (noiseTimer < 0)  //if noise timer has expired
             {
                 accel = 25.0f;
                 maxSpeed = 25.0f;
-                NoiseSize tempNoise = new NoiseSize();
-                tempNoise.noise = Instantiate(noiseSphere, transform.position, transform.rotation);                
-                tempNoise.noise.SetActive(true);
-                tempNoise.noise.tag = "Noise";
-                tempNoise.lifeTime = 0.10f;
-                noisesMade.Add(tempNoise);
-                Destroy(tempNoise);
+    
+                GameObject tn = Instantiate(noiseSphere, transform.position, transform.rotation);    //same as left shift
+                NoiseSize tempNosie = tn.AddComponent(typeof(NoiseSize)) as NoiseSize;
+                tn.tag = "Noise";
+                tn.SetActive(true);
+                tempNosie.lifeTime = 0.10f;
+                noisesMade.Add(tempNosie);
                 noiseTimer = 0.5f;
                 noiseCount++;
 
@@ -404,78 +443,56 @@ public class PlayerMove : MonoBehaviour
             {
                 noiseTimer -= Time.deltaTime;
             }
-            sneaking = true;
+            if (volumeDelay < 0)
+            {
+                aSource.Play();
+                volumeDelay = 0.5f;
+            }
+            else
+            {
+                volumeDelay -= Time.deltaTime;
+            }
+            sneaking = true;            
+            aSource.volume = sneakSoundLevel;
         }
         else if (Input.GetKeyUp(KeyCode.LeftControl))
         {         
             accel = 70.0f;
             maxSpeed = 20.0f;
             sneaking = false;
+            aSource.volume = normalSoundLevel;
         }
     }
 
-    void OnTriggerStay(Collider other)
+
+    //=================================================================================================================
+    //on trigger update clip to metal or concrete sound based on the tag of the object that triggers it
+    void OnTriggerEnter(Collider other)
     {
-        // Watch for player to enter this trigger
-        if (other.gameObject.tag == "PickUp")
+        if (other.gameObject.tag == "MetalGround")
         {
-            Debug.Log("Collision Detected " + other.gameObject.name);
-
-            if (pressE == null)
-            {
-            }
-            else
-            {
-                pressE.SetActive(true);
-            }
-            if (Input.GetKeyUp(KeyCode.E))
-            {
-                pressE.SetActive(false);
-            }
+            aSource.clip = metalSound;
+            Debug.Log("MetalSoundCollided");
         }
-        else if (other.gameObject.tag == "Clipboard")
+        if (other.gameObject.tag == "ConcreteGround")
         {
-            if (pressE == null)
-            {
-            }
-            else
-            {
-                pressE.SetActive(true);
-            }
-            if (Input.GetKeyUp(KeyCode.E))
-            {
-                GameObject.Destroy(other.gameObject);
-            }
-        }
-        else if (other.gameObject.tag == "Door")
-        {
-            if (Input.GetKeyUp(KeyCode.E))
-            {
-                other.gameObject.transform.position += new Vector3(0, 10.0f, 0);
-            }
-          
+            aSource.clip = concreteSound;
+            Debug.Log("Concerte Sound Collided");
         }
     }
 
-    void OnTriggerExit(Collider other)
-    {
-        if (other.gameObject.tag == "Player")
-        {
-            if (pressE == null)
-            {
-            }
-            else
-            {
-                pressE.SetActive(false);
-            }
-        }
-    }
-
+    //=================================================================================================================
+    //check life of noises made to see if they should be destoryed or continue to grow
     IEnumerator CheckLife()
     {
         foreach (NoiseSize noise in noisesMade)
         {
-            noise.IsNoiseOver();
+            if (noise.IsNoiseOver())
+            {
+                noisesMade.Remove(noise);
+                Destroy(noise.gameObject);
+                break;
+            }
         }
         yield return new WaitForEndOfFrame();
     }
